@@ -24,6 +24,14 @@ class Cell():
         self._surface = pygame.Surface((Cell.SIZE, Cell.SIZE))
         self._draw_cell()
 
+    def __hash__(self):
+        return hash((self._x, self._y))
+
+    def __eq__(self, other):
+        if other == None:
+            return False
+        return (self._x, self._y) == (other._x, other._y)
+
     @property
     def x(self):
         return self._x
@@ -35,6 +43,9 @@ class Cell():
     @property
     def is_visited(self):
         return self._visited
+
+    def is_wall(self, cardinality):
+        return self._walls[cardinality]
 
     def _draw_cell(self):
         color = Cell.BG_COLOR
