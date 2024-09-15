@@ -4,12 +4,13 @@ import pygame
 class Cell():
 
     SIZE = 50
+    SIZE_LIMIT_MIN = 2      # 1px for wall, 1px for cell
 
-    BG_COLOR         = (  0,   0,   0)
-    WALL_COLOR       = (  0,   0,   0)
-    VISITED_COLOR    = (127, 127, 127)
-    HIGHTLIGHT_COLOR = (  0, 180, 180)
-    STACKED_COLOR    = ( 42,   0,  42)
+    BG_COLOR         = pygame.Color('black')
+    WALL_COLOR       = pygame.Color('black')
+    VISITED_COLOR    = pygame.Color('grey')
+    HIGHTLIGHT_COLOR = pygame.Color('cyan')
+    STACKED_COLOR    = pygame.Color('purple')
 
     def __init__(self, x, y):
         self._x = x
@@ -22,15 +23,19 @@ class Cell():
         self._walls = {cardinality:True for cardinality in 'NSEW'}
 
         self._surface = pygame.Surface((Cell.SIZE, Cell.SIZE))
+        self._surface_updated = False
         self._draw_cell()
 
     def __hash__(self):
         return hash((self._x, self._y))
 
     def __eq__(self, other):
-        if other == None:
+        if other is None:
             return False
         return (self._x, self._y) == (other._x, other._y)
+
+    def __str__(self):
+        return f'{self.__class__.__name__}({self._x}, {self._y})'
 
     @property
     def x(self):
@@ -39,6 +44,10 @@ class Cell():
     @property
     def y(self):
         return self._y
+
+    @property
+    def need_redraw(self):
+        return self._surface_updated
 
     @property
     def is_visited(self):
@@ -58,16 +67,18 @@ class Cell():
         w, h = self._surface.get_size()
         thickness = 1
 
-        for C,v in self._walls.items():
-            if v == True:
-                if C == 'N':
+        for cardinality, has_wall in self._walls.items():
+            if has_wall:
+                if cardinality == 'N':
                     pygame.draw.line(self._surface, Cell.WALL_COLOR, (0, 0), (w - 1, 0), thickness)
-                if C == 'S':
+                if cardinality == 'S':
                     pygame.draw.line(self._surface, Cell.WALL_COLOR, (0, h), (w - 1, h), thickness)
-                if C == 'E':
+                if cardinality == 'E':
                     pygame.draw.line(self._surface, Cell.WALL_COLOR, (w, 0), (w, h - 1), thickness)
-                if C == 'W':
+                if cardinality == 'W':
                     pygame.draw.line(self._surface, Cell.WALL_COLOR, (0, 0), (0, h - 1), thickness)
+
+        self._surface_updated = True
 
     def visit(self):
         self._visited = True
@@ -81,18 +92,17 @@ class Cell():
         self._stacked = False
         self._draw_cell()
 
-    def __str__(self):
-        return 'Cell(%d, %d)' % (self._x, self._y)
-
     def remove_wall(self, cardinality):
-        assert cardinality in 'NSEW'
+        assert(cardinality in 'NSEW')
         self._walls[cardinality] = False
         self._draw_cell()
 
     def draw(self, screen):
+        if not self.need_redraw:
+            return
+
         screen.blit(self._surface, self._pos)
+        self._surface_updated = False
 
     def hightlight(self, screen):
-        surf = self._surface.copy()
-        surf.fill(Cell.HIGHTLIGHT_COLOR)
-        screen.blit(surf, self._pos)
+        screen.fill(self.HIGHTLIGHT_COLOR, pygame.Rect(self._pos, (Cell.SIZE, Cell.SIZE)))
