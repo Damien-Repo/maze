@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import os
+from os.path import exists as file_exists
+from datetime import datetime
 
 import argparse
 import sys
@@ -21,6 +23,8 @@ class App():
 
     FPS = 100
 
+    _dump_uuid = None
+
     def __init__(self, cols=None, rows=None, start_pos=None, end_pos=None, dump=None):
         assert(cols is None or cols > 0)
         assert(rows is None or rows > 0)
@@ -30,8 +34,6 @@ class App():
         self._map = None
         self._maze = None
         self._pathfinder = None
-
-        self._maze_progression = None
 
         self._cols = cols
         self._rows = rows
@@ -44,6 +46,11 @@ class App():
         self._end_pos = end_pos
 
         self._dump = dump
+        self._dump_uuid = self.generate_dump_uuid()
+
+    @classmethod
+    def generate_dump_uuid(cls):
+        return datetime.now().strftime('%Y%m%d%H%M%S')
 
     def _init_pygame(self):
         pygame.init()
@@ -103,6 +110,8 @@ Controls:
         self._screen_map.fill(self.BG_COLOR)
         self._screen_path.fill(self.BG_COLOR)
 
+        self._dump_uuid = self.generate_dump_uuid()
+
     def events(self):
         for event in pygame.event.get():
             if event != pygame.NOEVENT:
@@ -110,6 +119,17 @@ Controls:
                     self._running = False
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                     self._restart()
+
+    def _dump_screen(self, filename, must_not_exists=False):
+        if not self._dump:
+            return
+
+        filename = f'{self._dump_uuid}_{filename}'
+
+        if must_not_exists and file_exists(filename):
+            return
+
+        pygame.image.save(self._screen, filename)
 
     def update(self):
         if self._map is None:
@@ -121,14 +141,13 @@ Controls:
             return
 
         if not self._maze.was_generated:
-            if self._dump and self._maze.progression == 50.0:
-                pygame.image.save(self._screen, 'maze_half_generated.png')
+            if int(self._maze.progression) in (25, 50, 75):
+                self._dump_screen(f'maze_{self._maze.progression:.0f}%_generated.png', must_not_exists=True)
             self._maze.update()
             return
 
         if self._pathfinder is None:
-            if self._dump:
-                pygame.image.save(self._screen, 'maze_generated.png')
+            self._dump_screen('maze_generated.png')
             self._init_pathfinder()
             return
 
@@ -139,8 +158,7 @@ Controls:
         if not self._pathfinder.final_path_drawn():
             return
 
-        if self._dump:
-            pygame.image.save(self._screen, 'path_found.png')
+        self._dump_screen('path_found.png')
         self._restart(wait=True)
 
     def draw(self):
