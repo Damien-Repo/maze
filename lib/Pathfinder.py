@@ -246,7 +246,7 @@ class Pathfinder():
         if self.is_final_path_full_rendered:
             return
 
-        for cell in self._render_path_gen(self._cell_cur, self._cell_start, max(self._cell_cur.length // 60, 10)):
+        for cell in self._render_path_gen(self._cell_cur, self._cell_start, max(self._cell_cur.length // 60, 50)):
             self._cell_cur = cell
 
         if self._cell_cur == self._cell_start:
