@@ -157,7 +157,7 @@ Controls:
         if file_exists(filename):
             return
 
-        pygame.image.save(self._screen, f'{self._dump_uuid}_{filename}')
+        pygame.image.save(self._screen, filename)
 
     def _update_step_1_init_map(self):
         assert(self._map is None)

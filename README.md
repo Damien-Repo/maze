@@ -11,6 +11,7 @@ POC to generate and resolve a maze.
 ![maze_half_generated](assets/maze_half_generated.png)
 ![maze_generated](assets/maze_generated.png)
 ![path_found](assets/path_found.png)
+![path_found_debug](assets/path_found_debug.png)
 
 ### How to install
 
