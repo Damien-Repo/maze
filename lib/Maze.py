@@ -1,10 +1,6 @@
 
 import random
 
-class MazeGenerator():
-    #//TEMP voir pour pouvoir generer a partir de plusieurs points en parrallele
-    pass
-
 
 class Maze():
 
@@ -16,7 +12,7 @@ class Maze():
 
         self._visited_cells_count = 0
 
-        self._cell_to_redraw = None
+        self._cells_to_redraw = set()
 
     @property
     def was_generated(self):
@@ -61,7 +57,7 @@ class Maze():
         self._current_cell.visit()
         self._visited_cells_count += 1
 
-        self._cell_to_redraw = self._current_cell
+        self._cells_to_redraw.add(self._current_cell)
 
         next_cell = self._find_random_neighbor(self._current_cell)
         if next_cell is not None:
@@ -72,16 +68,18 @@ class Maze():
         elif len(self._stack) > 0:
             self._current_cell = self._stack_pop()
 
-    def update(self):
+    def update(self, multiple_update_counter=1):
+        assert(multiple_update_counter > 0)
         if self.was_generated:
             return
 
-        self._update_generator()
+        for _ in range(0, multiple_update_counter):
+            self._update_generator()
 
     def draw(self, screen):
-        if self._cell_to_redraw is not None:
-            self._cell_to_redraw.draw(screen)
-            self._cell_to_redraw = None
+        for cell_to_redraw in self._cells_to_redraw:
+            cell_to_redraw.draw(screen)
+        self._cells_to_redraw.clear()
 
         if len(self._stack) > 0:
             self._current_cell.hightlight(screen)

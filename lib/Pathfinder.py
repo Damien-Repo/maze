@@ -105,6 +105,8 @@ class Pathfinder():
             while Vec(start_pos).distance_to(Vec(end_pos)) <= min(map_grid.cols, map_grid.rows) // 4:
                 end_pos = map_grid.get_random_cell_pos()
 
+        self._update_count = 0
+
         self._cell_start = AStarCell(map_grid.get_cell(*start_pos))
         self._cell_end = AStarCell(map_grid.get_cell(*end_pos))
         self._cell_cur = None
@@ -177,11 +179,11 @@ class Pathfinder():
             self._open_set.add(n)
             self._debug_set.add(n)
 
-    def _update_stable_path(self, update_count):
+    def _update_stable_path(self):
         prev = None
         for p in self._cell_cur.get_path():
             if prev is not None:
-                p.link_next_cell(prev, update_count)
+                p.link_next_cell(prev, self._update_count)
             if p == self._last_stable:
                 break
             prev = p
@@ -189,7 +191,7 @@ class Pathfinder():
         cur = self._last_stable
 
         while cur != self._cell_cur:
-            next_cell = cur.get_next_stable_cell(update_count, self._stable_min_duration)
+            next_cell = cur.get_next_stable_cell(self._update_count, self._stable_min_duration)
 
             if next_cell is None:
                 break
@@ -197,7 +199,7 @@ class Pathfinder():
 
             self._last_stable = cur
 
-    def _render_stable_path(self, update_count, step_max=10):
+    def _render_stable_path(self, step_max=10):
         cur = self._last_rendered_stable
         step_count = 0
 
@@ -206,21 +208,24 @@ class Pathfinder():
             if step_count > step_max:
                 break
 
-            next_cell = cur.get_next_stable_cell(update_count, self._stable_min_duration)
+            next_cell = cur.get_next_stable_cell(self._update_count, self._stable_min_duration)
             cur.draw(self._surface_stable_path, next_cell=next_cell, stable=True)
             cur = next_cell
             self._last_rendered_stable = cur
             step_count += 1
 
+    def update(self, multiple_update_counter=1):
+        assert(multiple_update_counter > 0)
 
-    def update(self, update_count):
-        if self.path_found():
-            return
+        for _ in range(0, multiple_update_counter):
+            if self.path_found():
+                return
 
-        self._A_star()
-        self._update_stable_path(update_count)
-        self._render_stable_path(update_count)
+            self._update_count += 1
 
+            self._A_star()
+            self._update_stable_path()
+            self._render_stable_path()
 
     def _render_path_gen(self, cur_cell_to_render, last_cell_to_render, depth_max):
         prev = None

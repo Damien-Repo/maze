@@ -49,7 +49,7 @@ class App():
         self._start_pos = start_pos
         self._end_pos = end_pos
 
-        self._update_count = None
+        self._multiple_update_counter = 1
 
         self._dump = dump
         self._dump_uuid = None
@@ -83,6 +83,7 @@ Controls:
   'R'           => Restart
   'S'           => To save the current map
   'D'           => Toggle debug mode during pathfinding
+  '+' / '-'     => Increase/Decrease by 10 the number of updates per frame
 =========================
         ''')
 
@@ -93,6 +94,8 @@ Controls:
             out += f' (Generating {self._maze.progression:.2f}%)'
         if self._pathfinder is not None and not self._pathfinder.path_found():
             out += f' (Finding path length: {len(self._pathfinder)} cells)'
+        if self._multiple_update_counter > 1:
+            out += f' x{self._multiple_update_counter}'
         if self._debug_mode:
             out += ' (DEBUG MODE)'
         return out
@@ -123,8 +126,6 @@ Controls:
         self._screen_map.fill(self.BG_COLOR)
         self._screen_path.fill(self.BG_COLOR)
 
-        self._update_count = None
-
         self._dump_uuid = self.generate_dump_uuid()
 
         self._cur_update_step = 0
@@ -143,6 +144,12 @@ Controls:
                     self._update_step_4_save_maze(force=True)
                 elif event.key == pygame.K_d:
                     self._debug_mode = not self._debug_mode
+                elif event.key in (pygame.K_PLUS, pygame.K_KP_PLUS):
+                    self._multiple_update_counter += 10
+                    self._multiple_update_counter = min(self._multiple_update_counter, 1000)
+                elif event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                    self._multiple_update_counter -= 10
+                    self._multiple_update_counter = max(self._multiple_update_counter, 1)
                 continue
 
             if event.type == self.USEREVENT_RESTART:
@@ -179,7 +186,7 @@ Controls:
         if int(self._maze.progression) in (25, 50, 75):
             self._dump_screen(f'maze_{int(self._maze.progression)}%_generated.png')
 
-        self._maze.update()
+        self._maze.update(multiple_update_counter=self._multiple_update_counter)
 
         return self._maze.was_generated
 
@@ -195,15 +202,13 @@ Controls:
 
         self._dump_screen('maze_generated.png')
         self._init_pathfinder()
-        self._update_count = 0
 
         return True
 
     def _update_step_6_find_path(self):
         assert(not self._pathfinder.path_found())
 
-        self._update_count += 1
-        self._pathfinder.update(self._update_count)
+        self._pathfinder.update(multiple_update_counter=self._multiple_update_counter)
 
         return self._pathfinder.path_found()
 
