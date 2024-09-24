@@ -1,4 +1,6 @@
 
+from os.path import exists as file_exists
+
 import random
 
 import pygame
@@ -16,23 +18,56 @@ class Map():
         (-1, 0): 'E',
     }
 
-    def __init__(self, screen, cols, rows):
+    def __init__(self, screen_size, cols, rows, data_to_load=None):
+        assert(data_to_load is None or (cols is None and rows is None))
+        assert(data_to_load is not None or (cols is not None and rows is not None))
+        assert(cols is None or cols > 0)
+        assert(rows is None or rows > 0)
 
-        w, h = screen.get_size()
-        Cell.SIZE = min(w // cols, h // rows)
-        assert(Cell.SIZE >= Cell.SIZE_LIMIT_MIN), f'cols/rows cannot be less than: cols={w // Cell.SIZE_LIMIT_MIN}, rows={h // Cell.SIZE_LIMIT_MIN}'
+        self._cells = []
+        self.cols = None
+        self.rows = None
+
+        if data_to_load is not None:
+            self._load_existing_map(screen_size, data_to_load)
+        else:
+            self._generate_empty_map(screen_size, cols, rows)
+
+    def __len__(self):
+        return self.cols * self.rows
+
+    def _init_dimensions(self, screen_size, cols, rows):
+        screen_w, screen_h = screen_size
+
+        if cols is None:
+            cols = screen_w // 10
+        if rows is None:
+            rows = screen_h // 10
+
+        Cell.SIZE = min(screen_w // cols, screen_h // rows)
+        assert(Cell.SIZE >= Cell.SIZE_LIMIT_MIN), f'cols/rows cannot be less than: cols={screen_w // Cell.SIZE_LIMIT_MIN}, rows={screen_h // Cell.SIZE_LIMIT_MIN}'
 
         self.cols = cols
         self.rows = rows
 
-        self._cells = []
+    def _load_existing_map(self, screen_size, data_to_load):
+        self._init_dimensions(screen_size, data_to_load['cols'], data_to_load['rows'])
+        self._cells = [Cell.load(cell_data) for cell_data in data_to_load['cells']]
+
+    def save(self):
+        return {
+            'cols': self.cols,
+            'rows': self.rows,
+            'cells': [cell.save() for cell in self._cells],
+        }
+
+    def _generate_empty_map(self, screen_size, cols, rows):
+        self._init_dimensions(screen_size, cols, rows)
+
         for y in range(0, self.rows):
             for x in range(0, self.cols):
                 cell = Cell(x, y)
                 self._cells.append(cell)
-
-    def __len__(self):
-        return self.cols * self.rows
 
     def get_cell(self, x, y):
         if x < 0 or y < 0 or \
@@ -75,6 +110,12 @@ class Map():
                 neighbors.append(n)
 
         return neighbors
+
+    def draw_all_cells(self, screen):
+        self.draw(screen)
+
+        for cell in self._cells:
+            cell.draw(screen)
 
     def draw(self, screen):
         pygame.draw.rect(screen, Cell.WALL_COLOR, screen.get_rect(), 1)

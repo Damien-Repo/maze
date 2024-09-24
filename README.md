@@ -26,6 +26,8 @@ pip install -r Requirements.txt
 
 You can use `--dump` option to dump the generated images (as above in Introduction).
 
+Options `--save` / `--load` can be used to save / load the generated maze.
+
 ### How to use
 
 Nothing to do, just run and watch.

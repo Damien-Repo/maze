@@ -1,4 +1,6 @@
 
+import re
+
 import pygame
 
 class Cell():
@@ -12,7 +14,10 @@ class Cell():
     HIGHTLIGHT_COLOR = pygame.Color('cyan')
     STACKED_COLOR    = pygame.Color('purple')
 
-    def __init__(self, x, y):
+    CARDINALITIES = 'NSEW'
+    LOAD_PATTERN = re.compile(r'(?P<x>[0-9]+),(?P<y>[0-9]+):(?P<walls>[NSEW]*)')
+
+    def __init__(self, x, y, draw_cell=True):
         self._x = x
         self._y = y
         self._pos = (self._x * Cell.SIZE, self._y * Cell.SIZE)
@@ -20,11 +25,13 @@ class Cell():
         self._visited = False
         self._stacked = False
 
-        self._walls = {cardinality:True for cardinality in 'NSEW'}
+        self._walls = {cardinality:True for cardinality in self.CARDINALITIES}
 
         self._surface = pygame.Surface((Cell.SIZE, Cell.SIZE))
         self._surface_updated = False
-        self._draw_cell()
+
+        if draw_cell:
+            self._draw_cell()
 
     def __hash__(self):
         return hash((self._x, self._y))
@@ -52,6 +59,22 @@ class Cell():
     @property
     def is_visited(self):
         return self._visited
+
+    @classmethod
+    def load(cls, data):
+        match = cls.LOAD_PATTERN.match(data)
+        assert(match is not None), f'Error: Invalid data "{data}"'
+        x = int(match.group('x'))
+        y = int(match.group('y'))
+
+        cell = cls(x, y, draw_cell=False)
+        cell._walls = {cardinality:cardinality in match.group('walls') for cardinality in cls.CARDINALITIES}
+        cell.visit()
+
+        return cell
+
+    def save(self):
+        return f'{self._x},{self._y}:{"".join([c for c in self.CARDINALITIES if self.is_wall(c)])}'
 
     def is_wall(self, cardinality):
         return self._walls[cardinality]
@@ -93,7 +116,7 @@ class Cell():
         self._draw_cell()
 
     def remove_wall(self, cardinality):
-        assert(cardinality in 'NSEW')
+        assert(cardinality in self.CARDINALITIES)
         self._walls[cardinality] = False
         self._draw_cell()
 

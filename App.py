@@ -3,6 +3,7 @@
 import os
 from os.path import exists as file_exists
 from datetime import datetime
+import json
 
 import argparse
 import sys
@@ -19,17 +20,17 @@ class App():
 
     BG_COLOR = pygame.Color(0, 0, 0, 0)
 
-    RESTART_FREEZE_TIME = 2     # in sec
+    USEREVENT_RESTART = pygame.USEREVENT + 1
+    RESTART_FREEZE_TIME = 3     # in sec
 
     FPS = 100
 
-    _dump_uuid = None
-
-    def __init__(self, cols=None, rows=None, start_pos=None, end_pos=None, dump=None):
+    def __init__(self, cols=None, rows=None, start_pos=None, end_pos=None, dump=None, save_generated_maze=False, load_generated_maze=None):
         assert(cols is None or cols > 0)
         assert(rows is None or rows > 0)
 
         self._running = False
+        self._cur_update_step = None
 
         self._map = None
         self._maze = None
@@ -40,13 +41,20 @@ class App():
 
         self._init_pygame()
 
-        assert(start_pos is None or (0 <= start_pos[0] < self._cols and 0 <= start_pos[1] < self._rows))
-        assert(end_pos is None or (0 <= end_pos[0] < self._cols and 0 <= end_pos[1] < self._rows))
+        self._save_generated_maze = save_generated_maze
+        self._loaded_data = None
+        if load_generated_maze is not None:
+            self._loaded_data = json.load(load_generated_maze)
+
         self._start_pos = start_pos
         self._end_pos = end_pos
 
+        self._update_count = None
+
         self._dump = dump
-        self._dump_uuid = self.generate_dump_uuid()
+        self._dump_uuid = None
+
+        self._debug_mode = False
 
     @classmethod
     def generate_dump_uuid(cls):
@@ -65,11 +73,6 @@ class App():
         self._screen_path = self._screen.copy().convert_alpha()
         self._screen_path.fill(self.BG_COLOR)
 
-        if self._cols is None:
-            self._cols = screen_w // 10
-        if self._rows is None:
-            self._rows = screen_h // 10
-
         self._clock = pygame.time.Clock()
 
         print('''
@@ -78,18 +81,27 @@ Controls:
 
   ESCAPE or 'Q' => Exit
   'R'           => Restart
+  'S'           => To save the current map
+  'D'           => Toggle debug mode during pathfinding
 =========================
         ''')
 
     @property
     def window_title(self):
         out = f'Maze - FPS: {self._clock.get_fps():.2f}'
-        if self._maze is not None and self._maze.progression < 100.0:
+        if self._maze is not None and not self._maze.was_generated:
             out += f' (Generating {self._maze.progression:.2f}%)'
+        if self._pathfinder is not None and not self._pathfinder.path_found():
+            out += f' (Finding path length: {len(self._pathfinder)} cells)'
+        if self._debug_mode:
+            out += ' (DEBUG MODE)'
         return out
 
     def _init_map(self):
-        self._map = Map(self._screen_map, self._cols, self._rows)
+        self._map = Map(self._screen_map.get_size(), self._cols, self._rows, self._loaded_data)
+
+        if self._loaded_data is not None:
+            self._map.draw_all_cells(self._screen_map)
 
     def _init_maze(self):
         assert(self._map is not None)
@@ -97,11 +109,12 @@ Controls:
 
     def _init_pathfinder(self):
         assert(self._map is not None)
+        assert(self._start_pos is None or (0 <= self._start_pos[0] < self._map.cols and 0 <= self._start_pos[1] < self._map.rows))
+        assert(self._end_pos is None or (0 <= self._end_pos[0] < self._map.cols and 0 <= self._end_pos[1] < self._map.rows))
         self._pathfinder = Pathfinder(self._map, self._start_pos, self._end_pos)
 
-    def _restart(self, wait=False):
-        if wait:
-            pygame.time.wait(int(self.RESTART_FREEZE_TIME * 1000))
+    def _restart(self):
+        pygame.time.set_timer(self.USEREVENT_RESTART, 0)        # Remove restart event
 
         self._map = None
         self._maze = None
@@ -110,56 +123,126 @@ Controls:
         self._screen_map.fill(self.BG_COLOR)
         self._screen_path.fill(self.BG_COLOR)
 
+        self._update_count = None
+
         self._dump_uuid = self.generate_dump_uuid()
+
+        self._cur_update_step = 0
 
     def events(self):
         for event in pygame.event.get():
-            if event != pygame.NOEVENT:
-                if event.type == pygame.KEYDOWN and (event.key == pygame.K_ESCAPE or event.key == pygame.K_q):
-                    self._running = False
-                elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                    self._restart()
+            if event == pygame.NOEVENT:
+                continue
 
-    def _dump_screen(self, filename, must_not_exists=False):
+            if event.type == pygame.KEYDOWN:
+                if event.key in (pygame.K_ESCAPE, pygame.K_q):
+                    self._running = False
+                elif event.key == pygame.K_r:
+                    self._restart()
+                elif event.key == pygame.K_s:
+                    self._update_step_4_save_maze(force=True)
+                elif event.key == pygame.K_d:
+                    self._debug_mode = not self._debug_mode
+                continue
+
+            if event.type == self.USEREVENT_RESTART:
+                self._restart()
+                continue
+
+    def _dump_screen(self, filename):
         if not self._dump:
             return
 
         filename = f'{self._dump_uuid}_{filename}'
-
-        if must_not_exists and file_exists(filename):
+        if file_exists(filename):
             return
 
-        pygame.image.save(self._screen, filename)
+        pygame.image.save(self._screen, f'{self._dump_uuid}_{filename}')
+
+    def _update_step_1_init_map(self):
+        assert(self._map is None)
+
+        self._init_map()
+
+        return True
+
+    def _update_step_2_init_maze(self):
+        assert(self._maze is None)
+
+        self._init_maze()
+
+        return True
+
+    def _update_step_3_generate_maze(self):
+        assert(not self._maze.was_generated)
+
+        if int(self._maze.progression) in (25, 50, 75):
+            self._dump_screen(f'maze_{int(self._maze.progression)}%_generated.png')
+
+        self._maze.update()
+
+        return self._maze.was_generated
+
+    def _update_step_4_save_maze(self, force=False):
+        if self._save_generated_maze or force:
+            with open(f'{self._dump_uuid}_maze_{self._map.cols}x{self._map.rows}.json', 'w', encoding='utf-8') as f:
+                json.dump(self._map.save(), f)
+
+        return True
+
+    def _update_step_5_init_pathfinder(self):
+        assert(self._pathfinder is None)
+
+        self._dump_screen('maze_generated.png')
+        self._init_pathfinder()
+        self._update_count = 0
+
+        return True
+
+    def _update_step_6_find_path(self):
+        assert(not self._pathfinder.path_found())
+
+        self._update_count += 1
+        self._pathfinder.update(self._update_count)
+
+        return self._pathfinder.path_found()
+
+    def _update_step_7_render_full_path(self):
+        return self._pathfinder.is_final_path_full_rendered
+
+    def _update_step_8_launch_restart(self):
+        self._dump_screen('path_found.png')
+
+        pygame.time.set_timer(self.USEREVENT_RESTART, self.RESTART_FREEZE_TIME * 1000)
+
+        return True
+
+    def _update_step_9_wait_restart(self):
+        return None
+
+    ALL_UPDATE_STEP_FUNCS = [
+        '_update_step_1_init_map',
+        '_update_step_2_init_maze',
+        '_update_step_3_generate_maze',
+        '_update_step_4_save_maze',
+        '_update_step_5_init_pathfinder',
+        '_update_step_6_find_path',
+        '_update_step_7_render_full_path',
+        '_update_step_8_launch_restart',
+        '_update_step_9_wait_restart',
+    ]
 
     def update(self):
-        if self._map is None:
-            self._init_map()
-            return
+        assert(self._cur_update_step is not None)
 
-        if self._maze is None:
-            self._init_maze()
-            return
+        update_func = getattr(self, self.ALL_UPDATE_STEP_FUNCS[self._cur_update_step], None)
+        assert(update_func is not None)
 
-        if not self._maze.was_generated:
-            if int(self._maze.progression) in (25, 50, 75):
-                self._dump_screen(f'maze_{self._maze.progression:.0f}%_generated.png', must_not_exists=True)
-            self._maze.update()
-            return
+        if update_func():
+            self._cur_update_step += 1
+            if self._cur_update_step >= len(self.ALL_UPDATE_STEP_FUNCS):
+                self._cur_update_step = 0
 
-        if self._pathfinder is None:
-            self._dump_screen('maze_generated.png')
-            self._init_pathfinder()
-            return
-
-        if not self._pathfinder.path_found():
-            self._pathfinder.update()
-            return
-
-        if not self._pathfinder.final_path_drawn():
-            return
-
-        self._dump_screen('path_found.png')
-        self._restart(wait=True)
 
     def draw(self):
         if self._pathfinder is None:
@@ -169,8 +252,11 @@ Controls:
             if self._maze is not None:
                 self._maze.draw(self._screen_map)
         else:
-            self._screen_path.fill(self.BG_COLOR)
-            self._pathfinder.draw(self._screen_path)
+            if not self._pathfinder.path_found():
+                self._screen_path.fill(self.BG_COLOR)
+                self._pathfinder.draw(self._screen_path, debug=self._debug_mode)
+            else:
+                self._pathfinder.draw_full_path(self._screen_path)
 
         self._screen.blit(self._screen_map, (0, 0))
         self._screen.blit(self._screen_path, (0, 0))
@@ -179,6 +265,9 @@ Controls:
 
     def run(self):
         self._running = True
+
+        self._restart()
+
         while self._running:
             self._clock.tick(self.FPS)
             pygame.display.set_caption(self.window_title)
@@ -209,6 +298,15 @@ if __name__ == '__main__':
                         action='store_true',
                         dest='dump',
                         help='dump the map at different stages of the generation process')
+    parser.add_argument('--save', '--save-maze',
+                        action='store_true',
+                        dest='save_generated_maze',
+                        help='save the generated maze')
+    parser.add_argument('--load', '--load-maze',
+                        type=argparse.FileType('r'),
+                        dest='load_generated_maze',
+                        metavar='load_generated_maze',
+                        help='load a pre generated maze')
     args = parser.parse_args()
 
     app_params = {
@@ -217,6 +315,8 @@ if __name__ == '__main__':
         'start_pos': None,
         'end_pos': None,
         'dump': None,
+        'save_generated_maze': None,
+        'load_generated_maze': None,
     }
 
     if args.dims is not None:
@@ -237,5 +337,9 @@ if __name__ == '__main__':
 
     app_params['dump'] = args.dump
 
+    app_params['save_generated_maze'] = args.save_generated_maze
+    app_params['load_generated_maze'] = args.load_generated_maze
+
     a = App(**app_params)
     a.run()
+    print('END APP')        #//TEMP

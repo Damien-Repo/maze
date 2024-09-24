@@ -1,6 +1,10 @@
 
 import random
 
+class MazeGenerator():
+    #//TEMP voir pour pouvoir generer a partir de plusieurs points en parrallele
+    pass
+
 
 class Maze():
 
